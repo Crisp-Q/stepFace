@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 完整版：人脸识别 + 跟踪 + 可视化标注 + Flask 实时网页显示
+# 完整版：人脸识别 + 跟踪 + 可视化标注 + Flask 实时网页显示 + 从 MySQL 读取姓名和 info（仅显示姓名）
 
 import cv2
 import time
@@ -9,6 +9,7 @@ import collections
 import threading
 import uuid
 import os
+import pymysql
 from flask import Flask, Response
 
 # -------------------- 配置 --------------------
@@ -17,8 +18,15 @@ CF_API_URL = "http://localhost:8000/api/v1/recognition/recognize"
 CF_API_KEY = "YOUR_COMPRE_FACE_API_KEY"
 WINDOW_SIZE = 5
 VOTE_CONF_THRESHOLD = 0.8
-EMBEDDING_THRESH = 0.6
 RECHECK_INTERVAL_FRAMES = 20
+
+MYSQL_CONFIG = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'your_password',
+    'database': 'face_db',
+    'charset': 'utf8mb4'
+}
 
 # 初始化 Flask
 app = Flask(__name__)
@@ -27,7 +35,7 @@ app = Flask(__name__)
 trackers = {}
 window_buf = {}
 subject_names = {}  # subject_id -> name
-subject_center_embs = {}  # subject_id -> np.array([...])
+subject_infos = {}  # subject_id -> info（不显示，仅供推送使用）
 frame_counter = 0
 
 # -------------------- CompreFace 调用 --------------------
@@ -51,8 +59,7 @@ def call_compre_face(frame):
                     item['box']['x_max'] - item['box']['x_min'],
                     item['box']['y_max'] - item['box']['y_min']),
             'id': subj['subject'],
-            'conf': subj['confidence'],
-            'emb': np.array(subj['embedding']) if 'embedding' in subj else None
+            'conf': subj['confidence']
         })
     return faces
 
@@ -83,12 +90,7 @@ def gen_frames():
         if do_detect:
             faces = call_compre_face(frame)
             for face in faces:
-                sid, conf, emb, box = face['id'], face['conf'], face['emb'], face['box']
-                if emb is None:
-                    continue
-                center = subject_center_embs.get(sid)
-                if center is not None and np.linalg.norm(emb - center) > EMBEDDING_THRESH:
-                    continue
+                sid, conf, box = face['id'], face['conf'], face['box']
                 tracker = cv2.TrackerKCF_create()
                 tracker.init(frame, tuple(box))
                 tid = str(uuid.uuid4())
@@ -124,18 +126,22 @@ def video_feed():
 def index():
     return "<html><body><h1>视频流</h1><img src='/video'></body></html>"
 
-# -------------------- 运行 --------------------
+# -------------------- 数据库加载 --------------------
+def load_subjects_from_db():
+    global subject_names, subject_infos
+    try:
+        conn = pymysql.connect(**MYSQL_CONFIG)
+        cursor = conn.cursor()
+        cursor.execute("SELECT subject_id, name, info FROM subject_table")
+        for sid, name, info in cursor.fetchall():
+            subject_names[str(sid)] = name
+            subject_infos[str(sid)] = info  # 不用于显示
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"[MySQL ERROR] {e}")
+
+# -------------------- 启动 --------------------
 if __name__ == '__main__':
-    # 示例加载 subject 名字
-    subject_names = {
-        "001": "张三",
-        "002": "李四",
-        "003": "王五",
-    }
-    # 示例加载 embedding
-    subject_center_embs = {
-        "001": np.random.rand(512),
-        "002": np.random.rand(512),
-        "003": np.random.rand(512),
-    }
+    load_subjects_from_db()
     app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)
