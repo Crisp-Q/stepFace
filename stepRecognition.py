@@ -23,7 +23,7 @@ RECHECK_INTERVAL_FRAMES = 20
 MYSQL_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'your_password',
+    'password': '123456',
     'database': 'face_db',
     'charset': 'utf8mb4'
 }
@@ -145,3 +145,11 @@ def load_subjects_from_db():
 if __name__ == '__main__':
     load_subjects_from_db()
     app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)
+
+
+# todo：
+# 1、图片用名字+时间（精确到秒存储）保存到相对路径，然后本地读取，发送到微信公众号
+# 2、我能不能直接修改compreFace的ui和数据库，加个职务，手机号，个人信息字段，然后在录入照片的时候要求填这些信息。然后直接调用呢。我用的docker部署的
+# 3、数据库字段 名字 职务 手机号 个人信息 出个sql
+# 4、我还需要一个方便录入和修改数据的页面 有没有合适的
+
